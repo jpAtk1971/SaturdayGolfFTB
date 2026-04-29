@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Saturday Golf</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f5f3; color: #1a1a1a; min-height: 100vh; }
+  .wrap { max-width: 600px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+  .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; }
+  .top-bar h1 { font-size: 22px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+  .top-bar-right { display: flex; align-items: center; gap: 8px; }
+  .sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #ccc; flex-shrink: 0; transition: background 0.3s; }
+  .sync-dot.live { background: #3b8a1a; }
+  .sync-dot.error { background: #c0392b; }
+  .manage-btn { font-size: 13px; color: #555; background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 5px 12px; cursor: pointer; }
+  .manage-btn:hover { background: #f0f0ee; }
+  .hint { font-size: 13px; color: #777; margin-bottom: 1.1rem; }
+  .legend { display: flex; gap: 14px; margin-bottom: 1.25rem; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #666; }
+  .legend-dot { width: 9px; height: 9px; border-radius: 50%; }
+  .tee-card { background: #fff; border: 1px solid #e8e8e5; border-radius: 14px; padding: 1rem 1.25rem; margin-bottom: 1rem; }
+  .tee-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.85rem; }
+  .tee-info h2 { font-size: 15px; font-weight: 600; color: #1a1a1a; }
+  .tee-info p { font-size: 12px; color: #888; margin-top: 3px; }
+  .tee-right { display: flex; align-items: center; gap: 8px; }
+  .tee-count { font-size: 12px; color: #666; background: #f5f5f3; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+  .del-btn { font-size: 20px; line-height: 1; color: #bbb; background: none; border: none; cursor: pointer; padding: 0 2px; display: none; }
+  .del-btn:hover { color: #c0392b; }
+  .manage-mode .del-btn { display: block; }
+  .players { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; margin-bottom: 0.85rem; }
+  .player-btn { display: flex; align-items: center; gap: 8px; padding: 9px 13px; border-radius: 9px; border: 1px solid #ddd; background: #fff; cursor: pointer; font-size: 14px; color: #1a1a1a; font-family: inherit; text-align: left; transition: background 0.1s; -webkit-tap-highlight-color: transparent; }
+  .player-btn:hover { background: #f5f5f3; }
+  .player-btn:active { transform: scale(0.97); }
+  .player-btn.in { background: #eaf3de; border-color: #5a9e2f; color: #2d5a0e; }
+  .player-btn.out { background: #fdecea; border-color: #c0392b; color: #7b1a1a; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #ccc; flex-shrink: 0; }
+  .player-btn.in .dot { background: #3b8a1a; }
+  .player-btn.out .dot { background: #c0392b; }
+  .notes-area { border-top: 1px solid #f0f0ee; padding-top: 0.75rem; }
+  .notes-label { font-size: 11px; color: #aaa; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+  .notes-input { width: 100%; font-size: 13px; color: #1a1a1a; background: #f9f9f7; border: 1px solid #e8e8e5; border-radius: 8px; padding: 8px 10px; font-family: inherit; resize: none; min-height: 52px; line-height: 1.5; }
+  .notes-input:focus { outline: none; border-color: #aaa; }
+  .add-section { border: 1px dashed #ccc; border-radius: 14px; padding: 1rem 1.25rem; margin-bottom: 1rem; display: none; }
+  .add-section.visible { display: block; }
+  .add-section h3 { font-size: 14px; font-weight: 600; color: #1a1a1a; margin-bottom: 0.75rem; }
+  .form-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .form-row input { flex: 1; min-width: 130px; font-size: 13px; height: 36px; padding: 0 10px; border-radius: 8px; border: 1px solid #ddd; background: #fff; color: #1a1a1a; font-family: inherit; }
+  .form-row button, .add-player-row button { height: 36px; padding: 0 14px; font-size: 13px; border-radius: 8px; border: 1px solid #ddd; background: #fff; color: #1a1a1a; cursor: pointer; font-family: inherit; }
+  .form-row button:hover, .add-player-row button:hover { background: #f0f0ee; }
+  .section-divider { font-size: 11px; color: #aaa; text-transform: uppercase; letter-spacing: 0.05em; margin: 1rem 0 0.5rem; }
+  .player-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .player-tag { display: flex; align-items: center; gap: 6px; font-size: 12px; background: #f5f5f3; border: 1px solid #e0e0dd; border-radius: 20px; padding: 4px 10px; color: #1a1a1a; }
+  .player-tag button { background: none; border: none; cursor: pointer; color: #bbb; font-size: 15px; line-height: 1; padding: 0; }
+  .player-tag button:hover { color: #c0392b; }
+  .add-player-row { display: flex; gap: 6px; }
+  .add-player-row input { flex: 1; height: 34px; font-size: 13px; padding: 0 10px; border-radius: 8px; border: 1px solid #ddd; background: #fff; color: #1a1a1a; font-family: inherit; }
+  .empty { font-size: 14px; color: #aaa; padding: 0.5rem 0 1rem; }
+  .toast { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); background: #1a1a1a; color: #fff; font-size: 13px; padding: 8px 16px; border-radius: 20px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 999; }
+  .toast.show { opacity: 1; }
+  @media (max-width: 400px) {
+    .players { grid-template-columns: repeat(2, 1fr); }
+    .form-row { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <div class="top-bar">
+    <h1>⛳ Saturday golf</h1>
+    <div class="top-bar-right">
+      <div class="sync-dot" id="sync-dot" title="Sync status"></div>
+      <button class="manage-btn" id="manage-toggle" onclick="toggleManage()">Manage</button>
+    </div>
+  </div>
+  <p class="hint">Tap your name — once for <strong style="color:#2d5a0e">In</strong>, twice for <strong style="color:#7b1a1a">Out</strong>, again to clear.</p>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#3b8a1a"></div> Playing</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#c0392b"></div> Can't make it</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#ccc"></div> No answer yet</div>
+  </div>
+
+  <div id="tee-list"></div>
+
+  <div class="add-section" id="add-section">
+    <h3>Add a tee time</h3>
+    <div class="form-row">
+      <input id="tee-date" type="date" />
+      <input id="tee-time" type="time" value="08:00" />
+    </div>
+    <div class="form-row">
+      <input id="tee-course" type="text" placeholder="Course / location (optional)" />
+      <button onclick="addTeeTime()">Add tee time</button>
+    </div>
+    <div class="section-divider">Group members</div>
+    <div class="player-tags" id="player-tags"></div>
+    <div class="add-player-row">
+      <input id="new-player" type="text" placeholder="Add player name" />
+      <button onclick="addPlayer()">Add</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const SUPABASE_URL = "https://qxqpvifzxakqbzjqcntv.supabase.co";
+  const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF4cXB2aWZ6eGFrcWJ6anFjbnR2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NzMyMDMsImV4cCI6MjA5MzA0OTIwM30.7i9AhJZNSc8QRJVEbUnGA3sduQ9toDq3k-UWwtAVHMs";
+
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  let manageMode = false;
+  let state = {
+    players: ["Uncle Jeff", "Chris", "Hors", "JP", "Asian Ty", "Eduardo"],
+    teeTimes: []
+  };
+  let saving = false;
+
+  // ── Supabase load & save ──────────────────────────────────────────
+  async function loadState() {
+    try {
+      const { data, error } = await sb.from("golf_state").select("data").eq("id", "main").single();
+      if (error) throw error;
+      if (data && data.data) state = data.data;
+      setSyncDot("live");
+    } catch(e) {
+      console.error("Load error:", e);
+      setSyncDot("error");
+      showToast("Couldn't connect — check your internet");
+    }
+    render();
+  }
+
+  async function saveState() {
+    if (saving) return;
+    saving = true;
+    try {
+      const { error } = await sb.from("golf_state").upsert({ id: "main", data: state, updated_at: new Date().toISOString() });
+      if (error) throw error;
+      setSyncDot("live");
+    } catch(e) {
+      console.error("Save error:", e);
+      setSyncDot("error");
+      showToast("Sync failed — changes may not be saved");
+    }
+    saving = false;
+  }
+
+  // ── Real-time subscription ────────────────────────────────────────
+  sb.channel("golf-state-changes")
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "golf_state", filter: "id=eq.main" }, payload => {
+      if (payload.new && payload.new.data) {
+        state = payload.new.data;
+        render();
+      }
+    })
+    .subscribe(status => {
+      if (status === "SUBSCRIBED") setSyncDot("live");
+      else if (status === "CLOSED" || status === "CHANNEL_ERROR") setSyncDot("error");
+    });
+
+  // ── UI helpers ────────────────────────────────────────────────────
+  function setSyncDot(status) {
+    const dot = document.getElementById("sync-dot");
+    dot.className = "sync-dot " + (status === "live" ? "live" : status === "error" ? "error" : "");
+    dot.title = status === "live" ? "Live — syncing in real time" : status === "error" ? "Connection issue" : "Connecting...";
+  }
+
+  let toastTimer;
+  function showToast(msg) {
+    const t = document.getElementById("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("show"), 3000);
+  }
+
+  function toggleManage() {
+    manageMode = !manageMode;
+    document.getElementById("manage-toggle").textContent = manageMode ? "Done" : "Manage";
+    document.getElementById("add-section").classList.toggle("visible", manageMode);
+    document.getElementById("app").classList.toggle("manage-mode", manageMode);
+  }
+
+  // ── Actions ───────────────────────────────────────────────────────
+  function toggleVote(teeId, player) {
+    const tee = state.teeTimes.find(t => t.id === teeId);
+    if (!tee) return;
+    const cur = tee.votes[player];
+    if (!cur) tee.votes[player] = "in";
+    else if (cur === "in") tee.votes[player] = "out";
+    else delete tee.votes[player];
+    saveState();
+    render();
+  }
+
+  function updateNotes(teeId, val) {
+    const tee = state.teeTimes.find(t => t.id === teeId);
+    if (tee) { tee.notes = val; saveState(); }
+  }
+
+  function deleteTee(id) {
+    state.teeTimes = state.teeTimes.filter(t => t.id !== id);
+    saveState(); render();
+  }
+
+  function addTeeTime() {
+    const date = document.getElementById("tee-date").value;
+    const time = document.getElementById("tee-time").value;
+    const course = document.getElementById("tee-course").value.trim();
+    if (!date || !time) return;
+    state.teeTimes.push({ id: "t" + Date.now(), date, time, course, votes: {}, notes: "" });
+    document.getElementById("tee-date").value = "";
+    document.getElementById("tee-course").value = "";
+    saveState(); render();
+  }
+
+  function addPlayer() {
+    const inp = document.getElementById("new-player");
+    const name = inp.value.trim();
+    if (!name || state.players.includes(name)) return;
+    state.players.push(name);
+    inp.value = "";
+    saveState(); render();
+  }
+
+  function removePlayer(name) {
+    state.players = state.players.filter(p => p !== name);
+    state.teeTimes.forEach(t => { delete t.votes[name]; });
+    saveState(); render();
+  }
+
+  // ── Formatting ────────────────────────────────────────────────────
+  function formatDate(d) {
+    const dt = new Date(d + "T12:00:00");
+    return dt.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+  }
+
+  function formatTime(t) {
+    const [h, m] = t.split(":").map(Number);
+    const ampm = h >= 12 ? "PM" : "AM";
+    return ((h % 12) || 12) + ":" + String(m).padStart(2, "0") + " " + ampm;
+  }
+
+  function esc(str) {
+    return String(str).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  }
+
+  // ── Render ────────────────────────────────────────────────────────
+  function render() {
+    const sorted = [...state.teeTimes].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+    const list = document.getElementById("tee-list");
+
+    if (sorted.length === 0) {
+      list.innerHTML = `<p class="empty">No tee times yet — tap <strong>Manage</strong> to add one.</p>`;
+    } else {
+      list.innerHTML = sorted.map(tee => {
+        const inCount = state.players.filter(p => tee.votes[p] === "in").length;
+        const outCount = state.players.filter(p => tee.votes[p] === "out").length;
+        const btns = state.players.map(p => {
+          const v = tee.votes[p] || "";
+          const cls = v === "in" ? "in" : v === "out" ? "out" : "";
+          return `<button class="player-btn ${cls}" onclick="toggleVote('${esc(tee.id)}','${esc(p)}')"><span class="dot"></span>${p}</button>`;
+        }).join("");
+        const safeNotes = (tee.notes || "").replace(/"/g, "&quot;");
+        return `
+          <div class="tee-card">
+            <div class="tee-header">
+              <div class="tee-info">
+                <h2>${formatDate(tee.date)} &middot; ${formatTime(tee.time)}</h2>
+                <p>${tee.course || "Location TBD"}</p>
+              </div>
+              <div class="tee-right">
+                <span class="tee-count">${inCount} in &middot; ${outCount} out</span>
+                <button class="del-btn" onclick="deleteTee('${esc(tee.id)}')">&times;</button>
+              </div>
+            </div>
+            <div class="players">${btns}</div>
+            <div class="notes-area">
+              <div class="notes-label">Notes</div>
+              <textarea class="notes-input" placeholder="Carpool plans, side bets, who's buying the first round..." oninput="updateNotes('${esc(tee.id)}',this.value)">${safeNotes}</textarea>
+            </div>
+          </div>`;
+      }).join("");
+    }
+
+    const tags = document.getElementById("player-tags");
+    if (tags) {
+      tags.innerHTML = state.players.map(p =>
+        `<span class="player-tag">${p}<button onclick="removePlayer('${esc(p)}')" title="Remove">×</button></span>`
+      ).join("");
+    }
+  }
+
+  loadState();
+</script>
+</body>
+</html>
