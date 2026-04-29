@@ -18,7 +18,7 @@
   .manage-btn { font-size: 13px; color: #555; background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 5px 12px; cursor: pointer; }
   .manage-btn:hover { background: #f0f0ee; }
   .hint { font-size: 13px; color: #777; margin-bottom: 1.1rem; }
-  .legend { display: flex; gap: 14px; margin-bottom: 1.25rem; flex-wrap: wrap; }
+  .legend { display: flex; gap: 12px; margin-bottom: 1.25rem; flex-wrap: wrap; }
   .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #666; }
   .legend-dot { width: 9px; height: 9px; border-radius: 50%; }
   .tee-card { background: #fff; border: 1px solid #e8e8e5; border-radius: 14px; padding: 1rem 1.25rem; margin-bottom: 1rem; }
@@ -34,11 +34,15 @@
   .player-btn { display: flex; align-items: center; gap: 8px; padding: 9px 13px; border-radius: 9px; border: 1px solid #ddd; background: #fff; cursor: pointer; font-size: 14px; color: #1a1a1a; font-family: inherit; text-align: left; transition: background 0.1s; -webkit-tap-highlight-color: transparent; }
   .player-btn:hover { background: #f5f5f3; }
   .player-btn:active { transform: scale(0.97); }
-  .player-btn.in { background: #eaf3de; border-color: #5a9e2f; color: #2d5a0e; }
+  .player-btn.in  { background: #eaf3de; border-color: #5a9e2f; color: #2d5a0e; }
   .player-btn.out { background: #fdecea; border-color: #c0392b; color: #7b1a1a; }
+  .player-btn.tbd { background: #fef9ec; border-color: #d4a017; color: #7a5800; }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: #ccc; flex-shrink: 0; }
-  .player-btn.in .dot { background: #3b8a1a; }
+  .player-btn.in  .dot { background: #3b8a1a; }
   .player-btn.out .dot { background: #c0392b; }
+  .player-btn.tbd .dot { background: #d4a017; }
+  .player-name { flex: 1; }
+  .tbd-label { font-size: 10px; opacity: 0.7; font-weight: 500; }
   .notes-area { border-top: 1px solid #f0f0ee; padding-top: 0.75rem; }
   .notes-label { font-size: 11px; color: #aaa; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
   .notes-input { width: 100%; font-size: 13px; color: #1a1a1a; background: #f9f9f7; border: 1px solid #e8e8e5; border-radius: 8px; padding: 8px 10px; font-family: inherit; resize: none; min-height: 52px; line-height: 1.5; }
@@ -58,7 +62,7 @@
   .add-player-row { display: flex; gap: 6px; }
   .add-player-row input { flex: 1; height: 34px; font-size: 13px; padding: 0 10px; border-radius: 8px; border: 1px solid #ddd; background: #fff; color: #1a1a1a; font-family: inherit; }
   .empty { font-size: 14px; color: #aaa; padding: 0.5rem 0 1rem; }
-  .toast { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); background: #1a1a1a; color: #fff; font-size: 13px; padding: 8px 16px; border-radius: 20px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 999; }
+  .toast { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); background: #1a1a1a; color: #fff; font-size: 13px; padding: 8px 16px; border-radius: 20px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 999; white-space: nowrap; }
   .toast.show { opacity: 1; }
   @media (max-width: 400px) {
     .players { grid-template-columns: repeat(2, 1fr); }
@@ -75,12 +79,13 @@
       <button class="manage-btn" id="manage-toggle" onclick="toggleManage()">Manage</button>
     </div>
   </div>
-  <p class="hint">Tap your name — once for <strong style="color:#2d5a0e">In</strong>, twice for <strong style="color:#7b1a1a">Out</strong>, again to clear.</p>
+  <p class="hint">Tap your name to cycle: <strong style="color:#2d5a0e">In</strong> → <strong style="color:#7b1a1a">Out</strong> → <strong style="color:#7a5800">TBD</strong> → clear.</p>
 
   <div class="legend">
     <div class="legend-item"><div class="legend-dot" style="background:#3b8a1a"></div> Playing</div>
     <div class="legend-item"><div class="legend-dot" style="background:#c0392b"></div> Can't make it</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#ccc"></div> No answer yet</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#d4a017"></div> TBD</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#ccc"></div> No answer</div>
   </div>
 
   <div id="tee-list"></div>
@@ -112,14 +117,16 @@
 
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+  // cycle order: none → in → out → tbd → none
+  const CYCLE = { "": "in", "in": "out", "out": "tbd", "tbd": "" };
+
   let manageMode = false;
+  let saving = false;
   let state = {
     players: ["Uncle Jeff", "Chris", "Hors", "JP", "Asian Ty", "Eduardo"],
     teeTimes: []
   };
-  let saving = false;
 
-  // ── Supabase load & save ──────────────────────────────────────────
   async function loadState() {
     try {
       const { data, error } = await sb.from("golf_state").select("data").eq("id", "main").single();
@@ -149,20 +156,15 @@
     saving = false;
   }
 
-  // ── Real-time subscription ────────────────────────────────────────
   sb.channel("golf-state-changes")
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "golf_state", filter: "id=eq.main" }, payload => {
-      if (payload.new && payload.new.data) {
-        state = payload.new.data;
-        render();
-      }
+      if (payload.new && payload.new.data) { state = payload.new.data; render(); }
     })
     .subscribe(status => {
       if (status === "SUBSCRIBED") setSyncDot("live");
       else if (status === "CLOSED" || status === "CHANNEL_ERROR") setSyncDot("error");
     });
 
-  // ── UI helpers ────────────────────────────────────────────────────
   function setSyncDot(status) {
     const dot = document.getElementById("sync-dot");
     dot.className = "sync-dot " + (status === "live" ? "live" : status === "error" ? "error" : "");
@@ -185,14 +187,13 @@
     document.getElementById("app").classList.toggle("manage-mode", manageMode);
   }
 
-  // ── Actions ───────────────────────────────────────────────────────
   function toggleVote(teeId, player) {
     const tee = state.teeTimes.find(t => t.id === teeId);
     if (!tee) return;
-    const cur = tee.votes[player];
-    if (!cur) tee.votes[player] = "in";
-    else if (cur === "in") tee.votes[player] = "out";
-    else delete tee.votes[player];
+    const cur = tee.votes[player] || "";
+    const next = CYCLE[cur];
+    if (next === "") delete tee.votes[player];
+    else tee.votes[player] = next;
     saveState();
     render();
   }
@@ -233,7 +234,6 @@
     saveState(); render();
   }
 
-  // ── Formatting ────────────────────────────────────────────────────
   function formatDate(d) {
     const dt = new Date(d + "T12:00:00");
     return dt.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
@@ -249,7 +249,6 @@
     return String(str).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
   }
 
-  // ── Render ────────────────────────────────────────────────────────
   function render() {
     const sorted = [...state.teeTimes].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
     const list = document.getElementById("tee-list");
@@ -258,13 +257,19 @@
       list.innerHTML = `<p class="empty">No tee times yet — tap <strong>Manage</strong> to add one.</p>`;
     } else {
       list.innerHTML = sorted.map(tee => {
-        const inCount = state.players.filter(p => tee.votes[p] === "in").length;
+        const inCount  = state.players.filter(p => tee.votes[p] === "in").length;
         const outCount = state.players.filter(p => tee.votes[p] === "out").length;
+        const tbdCount = state.players.filter(p => tee.votes[p] === "tbd").length;
+        const countParts = [`${inCount} in`, `${outCount} out`];
+        if (tbdCount > 0) countParts.push(`${tbdCount} TBD`);
+
         const btns = state.players.map(p => {
           const v = tee.votes[p] || "";
-          const cls = v === "in" ? "in" : v === "out" ? "out" : "";
-          return `<button class="player-btn ${cls}" onclick="toggleVote('${esc(tee.id)}','${esc(p)}')"><span class="dot"></span>${p}</button>`;
+          const cls = v === "in" ? "in" : v === "out" ? "out" : v === "tbd" ? "tbd" : "";
+          const tbdTag = v === "tbd" ? `<span class="tbd-label">TBD</span>` : "";
+          return `<button class="player-btn ${cls}" onclick="toggleVote('${esc(tee.id)}','${esc(p)}')"><span class="dot"></span><span class="player-name">${p}</span>${tbdTag}</button>`;
         }).join("");
+
         const safeNotes = (tee.notes || "").replace(/"/g, "&quot;");
         return `
           <div class="tee-card">
@@ -274,7 +279,7 @@
                 <p>${tee.course || "Location TBD"}</p>
               </div>
               <div class="tee-right">
-                <span class="tee-count">${inCount} in &middot; ${outCount} out</span>
+                <span class="tee-count">${countParts.join(" &middot; ")}</span>
                 <button class="del-btn" onclick="deleteTee('${esc(tee.id)}')">&times;</button>
               </div>
             </div>
